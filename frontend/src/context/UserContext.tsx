@@ -16,7 +16,7 @@ const STORAGE_KEY = 'tax-platform-current-user-id'
 export function UserProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<UserInfo[]>([])
   const [currentUserId, setCurrentUserIdState] = useState<number | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = sessionStorage.getItem(STORAGE_KEY)
     return stored ? Number(stored) : null
   })
   const [loading, setLoading] = useState(true)
@@ -29,12 +29,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   function setCurrentUserId(id: number) {
     setCurrentUserIdState(id)
-    localStorage.setItem(STORAGE_KEY, String(id))
+    sessionStorage.setItem(STORAGE_KEY, String(id))
   }
 
   function clearCurrentUser() {
     setCurrentUserIdState(null)
-    localStorage.removeItem(STORAGE_KEY)
+    sessionStorage.removeItem(STORAGE_KEY)
   }
 
   const currentUser = users.find((u) => u.id === currentUserId) ?? null
