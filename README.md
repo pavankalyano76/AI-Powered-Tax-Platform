@@ -3,9 +3,15 @@
 A clickable prototype of a client/CPA tax platform, built for the "Designing an AI-Powered Tax
 Platform From Scratch" case study. Covers all 10 challenges from the brief.
 
+**Live demo:** https://ai-powered-tax-platform-790425128523.us-south1.run.app
+
 ## Running it locally
 
-Two servers, two terminal tabs.
+Two ways to run this — pick whichever fits what you're doing.
+
+### Option A — dev servers (for making changes)
+
+Two servers, two terminal tabs, live-reloading on both sides.
 
 **Backend (Flask + SQLAlchemy + SQLite):**
 ```bash
@@ -24,13 +30,50 @@ npm install
 npm run dev           # runs on http://localhost:5173, proxies /api/* to Flask on :5050
 ```
 
-Open `http://localhost:5173`. There's no login — a role switcher (top-right, same position for
-every role) lets you swap between demo accounts to see how the product changes per role. It's
-explicitly labeled "Demo — switch role" so it reads as an intentional stand-in for auth, not a
-leftover dev control.
+Open `http://localhost:5173`.
+
+### Option B — the production container (matches what's actually deployed)
+
+```bash
+docker build -t greengrowth-tax-platform .
+docker run -p 5050:5050 greengrowth-tax-platform
+```
+
+Open `http://localhost:5050`. This runs the exact multi-stage image (Node builds the frontend,
+then a Python stage runs Flask behind gunicorn and serves the built frontend as static files) that
+ships to Cloud Run, seeding fresh demo data on every container start.
+
+### What you'll see either way
+
+There's no real login — opening the app lands on a "Choose an account" screen (styled like a real
+multi-account switcher, not a labeled dev control) where you pick which of the 8 seeded people to
+browse as. The choice is remembered for that browser tab only (not shared across tabs, so you can
+open two tabs as two different roles side by side to compare views), until you click the
+GreenGrowth logo to go back and switch accounts. That's `sessionStorage`, not `localStorage`, on
+purpose — so a brand-new tab never silently inherits whatever account another tab is using.
 
 Whenever backend code changes, restart Flask. Whenever `seed.py` changes, re-run `python seed.py`
 before restarting (it rebuilds the database from scratch).
+
+## Deployment
+
+Containerized with a single multi-stage `Dockerfile` at the repo root: one stage builds the
+frontend with Node, the other runs the Flask API behind gunicorn, which serves the built frontend
+as static files from that same process — one deployable unit, no separate frontend/backend hosting
+or CORS configuration to maintain in production.
+
+Deployed on **Google Cloud Run**, connected directly to this GitHub repo for continuous deployment
+— every push to `main` triggers a Cloud Build that rebuilds the Dockerfile and rolls out a new
+revision automatically, with no manual redeploy step.
+
+Worth knowing about the live deployment specifically:
+- **The database resets on every cold start.** The container re-runs `python seed.py` each time it
+  boots, since the SQLite file lives in the container's writable layer and doesn't persist across
+  restarts, redeploys, or Cloud Run scaling to zero — this keeps the live demo always in a
+  known-good state rather than stale or half-edited, but it also means nothing typed into the live
+  app (field corrections, completed tasks, sent messages) survives a redeploy or a cold wake-up.
+- **Cloud Run scales to zero when idle**, so the first request after a few minutes of no traffic
+  can take a couple of seconds to wake back up.
 
 ## Demo accounts
 
@@ -70,7 +113,7 @@ before restarting (it rebuilds the database from scratch).
   low-confidence for the demo?), not a real model
 - Source documents — stylized mock pages with labeled, positioned boxes populated from the
   return's own real field data, not actual scans or OCR
-- Authentication — the role switcher stands in for login
+- Authentication — the "Choose an account" screen and role switcher stand in for real login
 - The client onboarding upload flow — a real interactive choose-file → uploading → error →
   success sequence, but nothing is actually stored; the "file" is never read
 - "New return" button on the Returns list — visibly present but intentionally not wired up
@@ -121,11 +164,6 @@ before restarting (it rebuilds the database from scratch).
   ordering implied); Dashboard is a ranked queue (numbered rank, urgency-colored left borders,
   filled alert-style stat cards, a "Top Priority" hero card), because they're answering different
   questions ("what exists" vs. "what should I do right now").
-- **Visual design system**: Inter typeface, a GreenGrowth-green accent used consistently for
-  primary actions and "verified/trustworthy" states, `lucide-react` icons throughout (an earlier
-  pass used emoji as placeholders — later replaced everywhere for a more production feel), and a
-  left sidebar for staff-facing screens vs. a simpler top bar for clients, reflecting the "hide
-  unnecessary complexity from clients" principle from the brief.
 - **Webb Consulting's ~150 bulk-generated fields deliberately include every affordance state**
   (locked, verified, editable, needs-approval, and normal AI-generated) in realistic proportions,
   not just uniform high-confidence output — otherwise the one return built for scale couldn't
@@ -133,9 +171,6 @@ before restarting (it rebuilds the database from scratch).
 
 ## Known limitations
 
-- No real document upload — the onboarding checklist's "Upload your W-2" step runs a real
-  interactive flow (choose file → uploading → error → success) but never actually stores or reads
-  the file, per the brief's "no real document parsing" guidance.
 - Business-owner and client roles currently only ever have one return each in the seed data; the
   client landing page assumes a single return per client and doesn't handle multiple.
 - Returns list and Dashboard filters/search/sort reset if you navigate away and back — they're
